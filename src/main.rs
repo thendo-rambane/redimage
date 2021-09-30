@@ -1,36 +1,18 @@
+use std::error::Error;
+
+use anyhow::Result;
 use dotenv::dotenv;
-mod reddit;
 use reddit::RedditApi;
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     dotenv().unwrap();
     let mut reddit_api = RedditApi::new();
-    if reddit_api.authenticate().is_ok() {
-        match reddit_api.get_account() {
-            Ok(account) => {
-                if let Ok(acc_json) = serde_json::to_string(&account) {
-                    println!("{}", acc_json)
-                } else {
-                    println!("Main: could not serialize")
-                }
-            }
-            Err(error) => {
-                println!("{}", error)
-            }
-        };
-        match reddit_api.get_following(100) {
-            Ok(account) => {
-                if let Ok(json) = serde_json::to_string(&account) {
-                    println!("{}", json)
-                } else {
-                    println!("Main: could not serialize")
-                }
-            }
-            Err(error) => {
-                println!("{}", error)
-            }
-        };
-    } else {
-        println!("Auth Error")
-    }
+    reddit_api.authenticate()?;
+    // println!("{:?}", serde_json::to_string(&reddit_api)?);
+    // let account = reddit_api.get_account()?;
+    // let account_json = serde_json::to_string(&account)?;
+    let following = reddit_api.get_following(100)?;
+    let following_json = serde_json::to_string(&following)?;
+    println!("{}", following_json);
+    Ok(())
 }
