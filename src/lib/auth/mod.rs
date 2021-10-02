@@ -33,6 +33,7 @@ impl Auth {
             .post(request_url)
             .basic_auth(
                 auth_data.client_id.as_str(),
+                // "asdasdsad",
                 auth_data.client_secret.as_ref(),
             )
             .body(format!(

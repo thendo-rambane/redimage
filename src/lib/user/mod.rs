@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     auth::{Auth, AuthRequest, TokenData},
+    errors::{api_request_errors::ApiRequestError, auth_errors::AuthError},
     response::RedditListing,
     subreddit::Subreddit,
 };
@@ -34,40 +35,79 @@ impl User {
         self.token_data = Some(token_data.to_owned());
         Ok(token_data.clone())
     }
-    pub fn get_account_data(&mut self) -> Result<Account> {
+    pub fn user_token(&self) -> std::result::Result<TokenData, AuthError> {
+        let token_data = self
+            .token_data
+            .to_owned()
+            .ok_or(AuthError::Unathenticated("User Token Not Found".into()))?;
+        Ok(token_data)
+    }
+
+    pub fn user_token_active(&self) -> std::result::Result<bool, AuthError> {
+        let token_data = self.user_token()?;
+
+        match self.signed_in_at {
+            Some(sign_in_time) => {
+                let sign_in_time = sign_in_time
+                    .elapsed()
+                    .map_err(|error| AuthError::TimeStampError(error))?;
+                if sign_in_time.as_secs() > token_data.expires_in {
+                    Err(AuthError::Unathenticated("User Token expired".into()))
+                } else {
+                    Ok(true)
+                }
+            }
+            None => Err(AuthError::Unathenticated("User Token not set".into())),
+        }
+    }
+
+    pub fn get_account_data(&mut self) -> std::result::Result<Account, ApiRequestError> {
         if let Some(account_data) = self.account_data.clone() {
             Ok(account_data.clone())
         } else {
-            if let Some(token_data) = self.token_data.clone() {
-                if let Some(signed_in_at) = self.signed_in_at {
-                    if signed_in_at.elapsed()?.as_secs() > token_data.expires_in {
-                        bail!("error:{message: 'unauthenticated'}")
-                    } else {
-                        let client = Client::new();
-                        let request_url = format!("https://oauth.reddit.com/api/v1/me/?raw_json=1");
+            if self
+                .user_token_active()
+                .map_err(|error| ApiRequestError::AuthError(error))?
+            {
+                let client = Client::new();
+                let request_url = format!("https://oauth.reddit.com/api/v1/me/?raw_json=1");
 
-                        let response = client
-                            .get(request_url)
-                            .bearer_auth(token_data.access_token)
-                            .header(
-                                USER_AGENT,
-                                format!(
-                                    "RustClient:redimage by {}",
-                                    std::env::var("REDDIT_USERNAME")?
-                                ),
-                            )
-                            .send()?;
-
-                        let response_text = response.text()?;
-                        let user_account = serde_json::from_str::<Account>(&response_text)?;
-                        self.account_data = Some(user_account.to_owned());
-                        Ok(user_account)
-                    }
-                } else {
-                    bail!("error:{message: 'unauthenticated'}")
-                }
+                let response = client
+                    .get(request_url)
+                    .bearer_auth(
+                        self.user_token()
+                            .map_err(|error| ApiRequestError::AuthError(error))?
+                            .access_token,
+                    )
+                    .header(
+                        USER_AGENT,
+                        format!(
+                            "RustClient:redimage by {}",
+                            std::env::var("REDDIT_USERNAME")
+                                .map_err(|error| ApiRequestError::EnvVarError(error))?
+                        ),
+                    )
+                    .send()?;
+                let response_text =
+                    response
+                        .text()
+                        .map_err(|error| ApiRequestError::TextDecodingError {
+                            source: anyhow::Error::from(error),
+                            data_type: "Account".into(),
+                        })?;
+                let user_account =
+                    serde_json::from_str::<Account>(&response_text).map_err(|error| {
+                        ApiRequestError::SerdeError {
+                            data_type: "Account".into(),
+                            source: anyhow::Error::from(error),
+                        }
+                    })?;
+                self.account_data = Some(user_account.to_owned());
+                Ok(user_account)
             } else {
-                bail!("error:{message: 'unauthenticated'}")
+                Err(ApiRequestError::AuthError(AuthError::Unathenticated(
+                    "Authentication failed at get_account_data".into(),
+                )))
             }
         }
     }
@@ -106,5 +146,9 @@ impl User {
         } else {
             bail!("error:{message: 'unauthenticated'}")
         }
+    }
+
+    pub fn get_account_karma_breakdown() -> Result<String> {
+        todo!()
     }
 }

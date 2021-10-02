@@ -1,14 +1,20 @@
 use anyhow::Result;
 
-use serde::{Deserialize, Serialize};
+mod response;
+use errors::api_request_errors::ApiRequestError;
+use response::RedditListing;
+
 mod auth;
 use auth::{AuthRequest, TokenData};
-mod response;
+
 mod subreddit;
-use response::RedditListing;
 use subreddit::Subreddit;
+
 mod user;
 use user::{Account, User};
+
+use serde::{Deserialize, Serialize};
+mod errors;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RedditApi {
@@ -31,7 +37,7 @@ impl RedditApi {
     pub fn authenticate(&mut self) -> Result<TokenData> {
         self.user.authenticate(&self.auth_data)
     }
-    pub fn get_account(&mut self) -> Result<Account> {
+    pub fn get_account(&mut self) -> std::result::Result<Account, ApiRequestError> {
         self.user.get_account_data()
     }
     pub fn get_following(&self, limit: u32) -> Result<RedditListing<Subreddit>> {
