@@ -1,26 +1,18 @@
 mod aliases;
-use aliases::Result;
-
-mod response;
-use response::RedditListing;
-
 mod auth;
-use auth::{AuthRequest, TokenData};
-
 mod errors;
-
+mod response;
 mod subreddit;
-use subreddit::Subreddit;
-
 mod user;
-use user::{Account, User};
 
+use auth::{AuthRequest, TokenData};
 use serde::{Deserialize, Serialize};
+use user::User;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RedditApi {
     auth_data: auth::AuthRequest,
-    user: User,
+    pub user: User,
 }
 
 impl RedditApi {
@@ -37,11 +29,5 @@ impl RedditApi {
     }
     pub fn authenticate(&mut self) -> anyhow::Result<TokenData> {
         self.user.authenticate(&self.auth_data)
-    }
-    pub fn get_account(&mut self) -> Result<Account> {
-        self.user.get_account_data()
-    }
-    pub fn get_following(&self, limit: u32) -> Result<RedditListing<Subreddit>> {
-        self.user.get_following(limit)
     }
 }
