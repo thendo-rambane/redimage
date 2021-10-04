@@ -4,18 +4,14 @@ use super::auth_errors;
 
 #[derive(Error, Debug)]
 pub enum ApiError {
-    #[error("Failed to decode {data_type} from response text")]
+    #[error("Failed to decode response text")]
     TextDecodingError {
         // #[source]
         source: anyhow::Error,
-        data_type: String,
     },
 
-    #[error("Failed to parse json for {data_type}")]
-    SerdeError {
-        source: anyhow::Error,
-        data_type: String,
-    },
+    #[error("Failed to parse json for")]
+    SerdeError { source: anyhow::Error },
 
     #[error("The request library threw an error")]
     RequestError(#[from] reqwest::Error),

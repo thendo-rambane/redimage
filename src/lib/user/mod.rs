@@ -43,6 +43,58 @@ impl User {
         Ok(token_data)
     }
 
+    fn authenticated_request<T>(user: &User, request_url: &str) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        if user
+                .user_token_active()
+                .map_err(|error| ApiError::AuthError(error))?
+            {
+                let client = Client::new();
+
+                let response = client
+                    .get(request_url)
+                    .bearer_auth(
+                    user.user_token()
+                            .map_err(|error| ApiError::AuthError(error))?
+                            .access_token,
+                    )
+                    .header(
+                        USER_AGENT,
+                        format!(
+                            "RustClient:redimage by {}",
+                            std::env::var("REDDIT_USERNAME")
+                                .map_err(|error| ApiError::EnvVarError(error))?
+                        ),
+                    )
+                    .send()?;
+            let response_text = response
+                        .text()
+                        .map_err(|error| ApiError::TextDecodingError {
+                            source: anyhow::Error::from(error),
+                        })?;
+            let data = serde_json::from_str::<T>(&response_text).map_err(|error| {
+                        ApiError::SerdeError {
+                            source: anyhow::Error::from(error),
+                        }
+                    })?;
+            Ok(data)
+            } else {
+                Err(ApiError::AuthError(AuthError::Unathenticated(
+                    "Authentication failed at get user token data".into(),
+                )))
+            }
+        }
+
+    pub fn user_token(&self) -> std::result::Result<TokenData, AuthError> {
+        let token_data = self
+            .token_data
+            .to_owned()
+            .ok_or(AuthError::Unathenticated("User Token Not Found".into()))?;
+        Ok(token_data)
+    }
+
     pub fn user_token_active(&self) -> std::result::Result<bool, AuthError> {
         let token_data = self.user_token()?;
 
@@ -61,103 +113,17 @@ impl User {
         }
     }
 
-    pub fn get_account_data(&mut self) -> Result<Account> {
-        if let Some(account_data) = self.account_data.clone() {
-            Ok(account_data.clone())
-        } else {
-            if self
-                .user_token_active()
-                .map_err(|error| ApiError::AuthError(error))?
-            {
-                let client = Client::new();
-                let request_url = format!("https://oauth.reddit.com/api/v1/me/?raw_json=1");
-
-                let response = client
-                    .get(request_url)
-                    .bearer_auth(
-                        self.user_token()
-                            .map_err(|error| ApiError::AuthError(error))?
-                            .access_token,
-                    )
-                    .header(
-                        USER_AGENT,
-                        format!(
-                            "RustClient:redimage by {}",
-                            std::env::var("REDDIT_USERNAME")
-                                .map_err(|error| ApiError::EnvVarError(error))?
-                        ),
-                    )
-                    .send()?;
-                let response_text =
-                    response
-                        .text()
-                        .map_err(|error| ApiError::TextDecodingError {
-                            source: anyhow::Error::from(error),
-                            data_type: "Account".into(),
-                        })?;
-                let user_account =
-                    serde_json::from_str::<Account>(&response_text).map_err(|error| {
-                        ApiError::SerdeError {
-                            data_type: "Account".into(),
-                            source: anyhow::Error::from(error),
-                        }
-                    })?;
-                self.account_data = Some(user_account.to_owned());
-                Ok(user_account)
-            } else {
-                Err(ApiError::AuthError(AuthError::Unathenticated(
-                    "Authentication failed at get user token data".into(),
-                )))
-            }
-        }
+    pub fn get_account_data(&self) -> Result<Account> {
+        let request_url = "https://oauth.reddit.com/api/v1/me/?raw_json=1";
+        User::authenticated_request::<Account>(self, request_url)
     }
 
     pub fn get_following(&self, limit: u32) -> Result<RedditListing<Subreddit>> {
-        if self
-            .user_token_active()
-            .map_err(|error| ApiError::AuthError(error))?
-        {
-            let client = Client::new();
             let request_url = format!(
                 "https://oauth.reddit.com/subreddits/mine/?limit={limit}&raw_json=1",
                 limit = limit
             );
-
-            let response = client
-                .get(request_url)
-                .bearer_auth(
-                    self.user_token()
-                        .map_err(|error| ApiError::AuthError(error))?
-                        .access_token,
-                )
-                .header(
-                    USER_AGENT,
-                    format!(
-                        "RustClient:redimage by {}",
-                        std::env::var("REDDIT_USERNAME")
-                            .map_err(|error| ApiError::EnvVarError(error))?
-                    ),
-                )
-                .send()?;
-            let response_text = response
-                .text()
-                .map_err(|error| ApiError::TextDecodingError {
-                    source: anyhow::Error::from(error),
-                    data_type: "Account".into(),
-                })?;
-            let subbredits_followed = serde_json::from_str::<RedditListing<Subreddit>>(
-                &response_text,
-            )
-            .map_err(|error| ApiError::SerdeError {
-                data_type: "Account".into(),
-                source: anyhow::Error::from(error),
-            })?;
-            Ok(subbredits_followed)
-        } else {
-            Err(ApiError::AuthError(AuthError::Unathenticated(
-                "Authentication failed at get user token data".into(),
-            )))
-        }
+        User::authenticated_request::<RedditListing<Subreddit>>(self, request_url.as_str())
     }
 
     pub fn get_account_karma_breakdown() -> Result<String> {
