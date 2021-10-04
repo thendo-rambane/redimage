@@ -8,11 +8,17 @@ fn main() -> Result<(), ()> {
     reddit_api
         .authenticate()
         .map_err(|error| println!("{}", error))?;
-    let account = reddit_api
-        .get_account()
+    let karma_list = reddit_api
+        .user
+        .get_account_karma_breakdown()
         .map_err(|error| println!("{}", error))?;
-    let account_json = serde_json::to_string(&account).map_err(|error| println!("{}", error))?;
-    println!("{}", account_json);
+
+    // let account = reddit_api
+    //     .get_account()
+    //     .map_err(|error| println!("{}", error))?;
+    let karma_list_json =
+        serde_json::to_string(&karma_list).map_err(|error| println!("{}", error))?;
+    println!("{}", karma_list_json);
     // let following = reddit_api.get_following(100)?;
     // let following_json = serde_json::to_string(&following)?;
     // println!("{}", following_json);

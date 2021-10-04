@@ -4,15 +4,23 @@ use std::time::SystemTime;
 
 pub use account::Account;
 use reqwest::{blocking::Client, header::USER_AGENT};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
     aliases::Result,
     auth::{Auth, AuthRequest, TokenData},
     errors::{api_errors::ApiError, auth_errors::AuthError},
-    response::RedditListing,
+    response::{RedditListing, RedditResponse},
     subreddit::Subreddit,
 };
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Karma {
+    sr: String,
+    comment_karma: i32,
+    link_karma: i32,
+}
+pub type KarmaList = Vec<Karma>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct User {
@@ -35,57 +43,50 @@ impl User {
         self.token_data = Some(token_data.to_owned());
         Ok(token_data.clone())
     }
-    pub fn user_token(&self) -> std::result::Result<TokenData, AuthError> {
-        let token_data = self
-            .token_data
-            .to_owned()
-            .ok_or(AuthError::Unathenticated("User Token Not Found".into()))?;
-        Ok(token_data)
-    }
 
     fn authenticated_request<T>(user: &User, request_url: &str) -> Result<T>
     where
         T: DeserializeOwned,
     {
         if user
-                .user_token_active()
-                .map_err(|error| ApiError::AuthError(error))?
-            {
-                let client = Client::new();
+            .user_token_active()
+            .map_err(|error| ApiError::AuthError(error))?
+        {
+            let client = Client::new();
 
-                let response = client
-                    .get(request_url)
-                    .bearer_auth(
+            let response = client
+                .get(request_url)
+                .bearer_auth(
                     user.user_token()
-                            .map_err(|error| ApiError::AuthError(error))?
-                            .access_token,
-                    )
-                    .header(
-                        USER_AGENT,
-                        format!(
-                            "RustClient:redimage by {}",
-                            std::env::var("REDDIT_USERNAME")
-                                .map_err(|error| ApiError::EnvVarError(error))?
-                        ),
-                    )
-                    .send()?;
+                        .map_err(|error| ApiError::AuthError(error))?
+                        .access_token,
+                )
+                .header(
+                    USER_AGENT,
+                    format!(
+                        "RustClient:redimage by {}",
+                        std::env::var("REDDIT_USERNAME")
+                            .map_err(|error| ApiError::EnvVarError(error))?
+                    ),
+                )
+                .send()?;
             let response_text = response
-                        .text()
-                        .map_err(|error| ApiError::TextDecodingError {
-                            source: anyhow::Error::from(error),
-                        })?;
+                .text()
+                .map_err(|error| ApiError::TextDecodingError {
+                    source: anyhow::Error::from(error),
+                })?;
             let data = serde_json::from_str::<T>(&response_text).map_err(|error| {
-                        ApiError::SerdeError {
-                            source: anyhow::Error::from(error),
-                        }
-                    })?;
+                ApiError::SerdeError {
+                    source: anyhow::Error::from(error),
+                }
+            })?;
             Ok(data)
-            } else {
-                Err(ApiError::AuthError(AuthError::Unathenticated(
-                    "Authentication failed at get user token data".into(),
-                )))
-            }
+        } else {
+            Err(ApiError::AuthError(AuthError::Unathenticated(
+                "Authentication failed at get user token data".into(),
+            )))
         }
+    }
 
     pub fn user_token(&self) -> std::result::Result<TokenData, AuthError> {
         let token_data = self
@@ -119,14 +120,15 @@ impl User {
     }
 
     pub fn get_following(&self, limit: u32) -> Result<RedditListing<Subreddit>> {
-            let request_url = format!(
-                "https://oauth.reddit.com/subreddits/mine/?limit={limit}&raw_json=1",
-                limit = limit
-            );
+        let request_url = format!(
+            "https://oauth.reddit.com/subreddits/mine/?limit={limit}&raw_json=1",
+            limit = limit
+        );
         User::authenticated_request::<RedditListing<Subreddit>>(self, request_url.as_str())
     }
 
-    pub fn get_account_karma_breakdown() -> Result<String> {
-        todo!()
+    pub fn get_account_karma_breakdown(&self) -> Result<RedditResponse<KarmaList>> {
+        let request_url = format!("https://oauth.reddit.com/api/v1/me/karma");
+        User::authenticated_request::<RedditResponse<KarmaList>>(self, request_url.as_str())
     }
 }
