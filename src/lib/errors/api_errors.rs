@@ -3,7 +3,7 @@ use thiserror::Error;
 use super::auth_errors;
 
 #[derive(Error, Debug)]
-pub enum ApiRequestError {
+pub enum ApiError {
     #[error("Failed to decode {data_type} from response text")]
     TextDecodingError {
         // #[source]
