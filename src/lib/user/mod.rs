@@ -106,45 +106,61 @@ impl User {
                 Ok(user_account)
             } else {
                 Err(ApiRequestError::AuthError(AuthError::Unathenticated(
-                    "Authentication failed at get_account_data".into(),
+                    "Authentication failed at get user token data".into(),
                 )))
             }
         }
     }
 
-    pub fn get_following(&self, limit: u32) -> Result<RedditListing<Subreddit>> {
-        if let Some(token_data) = self.token_data.clone() {
-            if let Some(signed_in_at) = self.signed_in_at {
-                if signed_in_at.elapsed()?.as_secs() > token_data.expires_in {
-                    bail!("error:{message: 'unauthenticated'}")
-                } else {
-                    let client = Client::new();
-                    let request_url = format!(
-                        "https://oauth.reddit.com/subreddits/mine/?limit={limit}&raw_json=1",
-                        limit = limit // username = "niasrevenge"
-                                      // username = self.username
-                    );
-                    let response = client
-                        .get(request_url)
-                        .bearer_auth(token_data.access_token)
-                        .header(
-                            USER_AGENT,
-                            format!(
-                                "RustClient:redimage by {}",
-                                std::env::var("REDDIT_USERNAME")?
-                            ),
-                        )
-                        .send()?;
-                    let response_text = response.text()?;
-                    let subbredits_followed =
-                        serde_json::from_str::<RedditListing<Subreddit>>(&response_text)?;
-                    Ok(subbredits_followed)
-                }
-            } else {
-                bail!("error:{message: 'unauthenticated'}")
-            }
+    pub fn get_following(
+        &self,
+        limit: u32,
+    ) -> std::result::Result<RedditListing<Subreddit>, ApiRequestError> {
+        if self
+            .user_token_active()
+            .map_err(|error| ApiRequestError::AuthError(error))?
+        {
+            let client = Client::new();
+            let request_url = format!(
+                "https://oauth.reddit.com/subreddits/mine/?limit={limit}&raw_json=1",
+                limit = limit
+            );
+
+            let response = client
+                .get(request_url)
+                .bearer_auth(
+                    self.user_token()
+                        .map_err(|error| ApiRequestError::AuthError(error))?
+                        .access_token,
+                )
+                .header(
+                    USER_AGENT,
+                    format!(
+                        "RustClient:redimage by {}",
+                        std::env::var("REDDIT_USERNAME")
+                            .map_err(|error| ApiRequestError::EnvVarError(error))?
+                    ),
+                )
+                .send()?;
+            let response_text =
+                response
+                    .text()
+                    .map_err(|error| ApiRequestError::TextDecodingError {
+                        source: anyhow::Error::from(error),
+                        data_type: "Account".into(),
+                    })?;
+            let subbredits_followed = serde_json::from_str::<RedditListing<Subreddit>>(
+                &response_text,
+            )
+            .map_err(|error| ApiRequestError::SerdeError {
+                data_type: "Account".into(),
+                source: anyhow::Error::from(error),
+            })?;
+            Ok(subbredits_followed)
         } else {
-            bail!("error:{message: 'unauthenticated'}")
+            Err(ApiRequestError::AuthError(AuthError::Unathenticated(
+                "Authentication failed at get user token data".into(),
+            )))
         }
     }
 

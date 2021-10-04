@@ -40,7 +40,10 @@ impl RedditApi {
     pub fn get_account(&mut self) -> std::result::Result<Account, ApiRequestError> {
         self.user.get_account_data()
     }
-    pub fn get_following(&self, limit: u32) -> Result<RedditListing<Subreddit>> {
+    pub fn get_following(
+        &self,
+        limit: u32,
+    ) -> std::result::Result<RedditListing<Subreddit>, ApiRequestError> {
         self.user.get_following(limit)
     }
 }

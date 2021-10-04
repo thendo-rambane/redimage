@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use anyhow::Result;
 use dotenv::dotenv;
 use reddit::RedditApi;
